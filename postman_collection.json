@@ -1,0 +1,85 @@
+{
+  "info": {
+    "name": "Municipality Address Check (Local API + ArcGIS Sources)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Local API - Health",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "http://localhost:8000/api/health", "protocol": "http", "host": ["localhost"], "port": "8000", "path": ["api","health"] }
+      }
+    },
+    {
+      "name": "Local API - Check address (geocode)",
+      "request": {
+        "method": "POST",
+        "header": [{"key":"Content-Type","value":"application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"address\": \"1 Smith Street, Durban\",\n  \"country\": \"South Africa\"\n}"
+        },
+        "url": { "raw": "http://localhost:8000/api/check", "protocol": "http", "host": ["localhost"], "port": "8000", "path": ["api","check"] }
+      }
+    },
+    {
+      "name": "Local API - Check point (lat/lon)",
+      "request": {
+        "method": "POST",
+        "header": [{"key":"Content-Type","value":"application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"address\": \"manual point\",\n  \"lat\": -29.8587,\n  \"lon\": 31.0218\n}"
+        },
+        "url": { "raw": "http://localhost:8000/api/check", "protocol": "http", "host": ["localhost"], "port": "8000", "path": ["api","check"] }
+      }
+    },
+    {
+      "name": "Local API - History",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "http://localhost:8000/api/history?limit=50", "protocol": "http", "host": ["localhost"], "port": "8000", "path": ["api","history"], "query": [{"key":"limit","value":"50"}] }
+      }
+    },
+    {
+      "name": "Admin - Refresh datasets (requires X-Admin-Token)",
+      "request": {
+        "method": "POST",
+        "header": [{"key":"X-Admin-Token","value":"{{admin_token}}"}],
+        "url": { "raw": "http://localhost:8000/api/admin/refresh-datasets?which=all", "protocol": "http", "host": ["localhost"], "port": "8000", "path": ["api","admin","refresh-datasets"], "query": [{"key":"which","value":"all"}] }
+      }
+    },
+    {
+      "name": "ArcGIS - eThekwini boundary (layer metadata)",
+      "request": {
+        "method": "GET",
+        "url": "https://gis.durban.gov.za/server/rest/services/Hosted/Police_bounds_ethekwini/FeatureServer/0?f=pjson"
+      }
+    },
+    {
+      "name": "ArcGIS - eThekwini boundary (GeoJSON export)",
+      "request": {
+        "method": "GET",
+        "url": "https://gis.durban.gov.za/server/rest/services/Hosted/Police_bounds_ethekwini/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson"
+      }
+    },
+    {
+      "name": "ArcGIS - NSC candidate (layer metadata)",
+      "request": {
+        "method": "GET",
+        "url": "https://gis.durban.gov.za/server/rest/services/WebViewers/External_Cadastral_Services_Publisher/MapServer/28?f=pjson"
+      }
+    },
+    {
+      "name": "ArcGIS - MPR candidate (layer metadata)",
+      "request": {
+        "method": "GET",
+        "url": "https://gis.durban.gov.za/server/rest/services/WebViewers/Infrastructural_Services_Publisher/MapServer/59?f=pjson"
+      }
+    }
+  ],
+  "variable": [
+    {"key": "admin_token", "value": "change-me"}
+  ]
+}

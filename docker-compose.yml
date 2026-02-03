@@ -9,15 +9,18 @@ services:
       - ./backend/data:/app/data
       - ./backend/municipality_check.db:/app/municipality_check.db
     environment:
+      # Disable Nominatim if you want fully offline operation
       - MAC_ALLOW_NOMINATIM=true
+      # Set to a strong random value (or empty to disable admin refresh endpoint)
+      - MAC_ADMIN_TOKEN=change-me
 
   frontend:
     image: node:20-alpine
     working_dir: /app
     volumes:
       - ./frontend:/app
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
     ports:
       - "5173:5173"
+    command: sh -lc "npm install && npm run dev"
     depends_on:
       - backend
