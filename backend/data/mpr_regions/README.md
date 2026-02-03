@@ -1,3 +1,6 @@
-Put Municipal Planning Region (MPR) boundary files here.
+# MPR Regions (Municipal Planning Regions)
 
-Each feature should include a `REGION` field (e.g. North, Central, South, Outer West).
+Place planning-region boundary polygons here.
+
+Expected name field(s):
+- `REGION`, `FUNC_DISTR`, `NAME`, `name`

@@ -1,41 +1,19 @@
 export type CheckRequest = {
-  address: string
-  country?: string
-  lat?: number
-  lon?: number
-}
+  address: string;
+  country?: string;
+  lat?: number | null;
+  lon?: number | null;
+};
 
-export type LayerHit = {
-  layer: string
-  match?: string | null
-  reason?: string | null
-}
+export type CheckResult = Record<string, any> & {
+  ok: boolean;
+  input_address: string;
+  lat?: number | null;
+  lon?: number | null;
+};
 
-export type CheckResponse = {
-  ok: boolean
-  input_address: string
-  normalized_address?: string | null
-  lat?: number | null
-  lon?: number | null
-  municipality?: string | null
-  nsc_region?: string | null
-  mpr_region?: string | null
-  custom_region?: string | null
-  hits: LayerHit[]
-  message?: string | null
-}
-
-export type HistoryRow = {
-  id: number
-  created_at: string
-  input_address: string
-  normalized_address?: string | null
-  lat?: number | null
-  lon?: number | null
-  municipality?: string | null
-  nsc_region?: string | null
-  mpr_region?: string | null
-  custom_region?: string | null
-  ok: boolean
-  message?: string | null
-}
+export type CheckLog = Record<string, any> & {
+  id: number;
+  created_at: string;
+  address: string;
+};

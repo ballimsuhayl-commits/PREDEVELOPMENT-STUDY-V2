@@ -1,77 +1,68 @@
-"""Fetch public ArcGIS REST datasets and save them into backend/data.
-
-Run:
-  cd backend
-  python -m scripts.fetch_datasets
-
-This is optional. The app works with any boundary datasets you provide manually.
-"""
-
 from __future__ import annotations
 
-import json
+import asyncio
 from pathlib import Path
-from typing import Optional
+import sys
 
-import httpx
-
-
-HERE = Path(__file__).resolve().parent
-BACKEND = HERE.parent
-DATA = BACKEND / "data"
+from app.arcgis_fetch import fetch_arcgis_layer_to_geojson
+from app.config import settings
 
 
-def _ensure_dirs() -> None:
-    for d in [DATA / "municipalities", DATA / "nsc_regions", DATA / "mpr_regions", DATA / "custom_regions"]:
-        d.mkdir(parents=True, exist_ok=True)
+def _require(v: str, name: str) -> str:
+    v = (v or "").strip()
+    if not v:
+        raise ValueError(
+            f"Missing {name}. Set env var MAC_{name} (see README) or update backend/app/config.py."
+        )
+    return v
 
 
-def arcgis_query_to_geojson(layer_url: str, out_path: Path, where: str = "1=1", out_fields: str = "*") -> None:
-    base = layer_url.rstrip("/") + "/query"
-    params = {"where": where, "outFields": out_fields, "f": "geojson", "resultRecordCount": 2000, "resultOffset": 0}
-    features = []
-    with httpx.Client(timeout=60.0, headers={"User-Agent": "municipality-address-check/1.0"}) as client:
-        while True:
-            r = client.get(base, params=params)
-            r.raise_for_status()
-            gj = r.json()
-            batch = gj.get("features") or []
-            features.extend(batch)
-            if len(batch) < int(params["resultRecordCount"]):
-                out = {"type": "FeatureCollection", "features": features}
-                out_path.write_text(json.dumps(out), encoding="utf-8")
-                return
-            params["resultOffset"] = int(params["resultOffset"]) + int(params["resultRecordCount"])
+async def main() -> int:
+    """Fetch official layers and freeze them into backend/data/*.
 
+    This writes files into:
+      - data/municipalities/ethekwini_municipality.(geo)json
+      - data/nsc_regions/ethekwini_nsc.(geo)json
+      - data/mpr_regions/ethekwini_mpr.(geo)json
+    """
 
-def main() -> None:
-    _ensure_dirs()
+    root = Path(__file__).resolve().parents[1]
+    data_dir = root / "data"
 
-    ETHEKWINI_MUNIC_BOUNDARY_LAYER = (
-        "https://services3.arcgis.com/HO0zfySJshlD6Twu/arcgis/rest/services/"
-        "eThekwini_Municipal_Boundary/FeatureServer/0"
-    )
+    municipalities_dir = Path(settings.municipalities_dir)
+    nsc_dir = Path(settings.nsc_regions_dir)
+    mpr_dir = Path(settings.mpr_regions_dir)
 
-    # If you have NSC/MPR boundary layers, paste the layer URLs here.
-    NSC_LAYER: Optional[str] = None
-    MPR_LAYER: Optional[str] = None
+    municipalities_dir.mkdir(parents=True, exist_ok=True)
+    nsc_dir.mkdir(parents=True, exist_ok=True)
+    mpr_dir.mkdir(parents=True, exist_ok=True)
 
-    print("Downloading eThekwini municipal boundary…")
-    out_mun = DATA / "municipalities" / "eThekwini_Municipal_Boundary.geojson"
-    arcgis_query_to_geojson(ETHEKWINI_MUNIC_BOUNDARY_LAYER, out_mun)
-    print(f"Saved: {out_mun}")
+    mun_url = _require(settings.ethekwini_municipal_layer_url, "ETHEKWINI_MUNICIPAL_LAYER_URL")
+    nsc_url = _require(settings.ethekwini_nsc_layer_url, "ETHEKWINI_NSC_LAYER_URL")
+    mpr_url = _require(settings.ethekwini_mpr_layer_url, "ETHEKWINI_MPR_LAYER_URL")
 
-    if NSC_LAYER:
-        out_nsc = DATA / "nsc_regions" / "NSC.geojson"
-        arcgis_query_to_geojson(NSC_LAYER, out_nsc)
-        print(f"Saved: {out_nsc}")
-    if MPR_LAYER:
-        out_mpr = DATA / "mpr_regions" / "MPR.geojson"
-        arcgis_query_to_geojson(MPR_LAYER, out_mpr)
-        print(f"Saved: {out_mpr}")
+    print("Fetching municipality layer…")
+    mun_out = str(municipalities_dir / "ethekwini_municipality.json")
+    mun_res = await fetch_arcgis_layer_to_geojson(mun_url, mun_out)
+    print(f"  ✓ {mun_res.feature_count} features -> {mun_res.output_geojson_path}")
 
-    print("Done.")
+    print("Fetching NSC layer…")
+    nsc_out = str(nsc_dir / "ethekwini_nsc.json")
+    nsc_res = await fetch_arcgis_layer_to_geojson(nsc_url, nsc_out)
+    print(f"  ✓ {nsc_res.feature_count} features -> {nsc_res.output_geojson_path}")
+
+    print("Fetching MPR layer…")
+    mpr_out = str(mpr_dir / "ethekwini_mpr.json")
+    mpr_res = await fetch_arcgis_layer_to_geojson(mpr_url, mpr_out)
+    print(f"  ✓ {mpr_res.feature_count} features -> {mpr_res.output_geojson_path}")
+
+    print("Done. The app now runs fully offline using the cached files.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        raise SystemExit(asyncio.run(main()))
+    except Exception as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        raise SystemExit(1)

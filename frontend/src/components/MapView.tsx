@@ -1,37 +1,45 @@
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
+import React from "react";
+import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import L from "leaflet";
+import type { CheckResult } from "../types";
+import "leaflet/dist/leaflet.css";
 
-// Fix default marker icons in bundlers
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
-import markerIcon from 'leaflet/dist/images/marker-icon.png'
-import markerShadow from 'leaflet/dist/images/marker-shadow.png'
+// Leaflet default marker icons don't bundle well in Vite; use CDN URLs.
+const DefaultIcon = L.icon({
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconSize: [25, 41],
+  iconAnchor: [12, 41]
+});
+L.Marker.prototype.options.icon = DefaultIcon;
 
-delete (L.Icon.Default.prototype as any)._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow
-})
+export function MapView({ result }: { result: CheckResult | null }) {
+  const lat = result?.lat ?? null;
+  const lon = result?.lon ?? null;
+  if (lat === null || lon === null) return null;
 
-export function MapView(props: {
-  lat: number
-  lon: number
-  label?: string
-}) {
-  const { lat, lon, label } = props
   return (
-    <MapContainer center={[lat, lon]} zoom={14} style={{ height: 360, width: '100%', borderRadius: 12 }}>
-      <TileLayer
-        attribution="&copy; OpenStreetMap contributors"
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-      <Marker position={[lat, lon]}>
-        <Popup>
-          {label || 'Location'}<br />
-          {lat.toFixed(6)}, {lon.toFixed(6)}
-        </Popup>
-      </Marker>
-    </MapContainer>
-  )
+    <div className="card">
+      <div className="cardTitle">Map</div>
+      <div style={{ height: 340, borderRadius: 12, overflow: "hidden" }}>
+        <MapContainer center={[lat, lon]} zoom={13} style={{ height: "100%", width: "100%" }}>
+          <TileLayer
+            attribution='&copy; OpenStreetMap contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          <Marker position={[lat, lon]}>
+            <Popup>
+              <div style={{ fontSize: 12 }}>
+                <div><b>Municipality:</b> {String(result?.municipality ?? "—")}</div>
+                <div><b>NSC:</b> {String(result?.nsc_region ?? "—")}</div>
+                <div><b>MPR:</b> {String(result?.mpr_region ?? "—")}</div>
+                <div><b>Custom:</b> {String(result?.custom_region ?? "—")}</div>
+              </div>
+            </Popup>
+          </Marker>
+        </MapContainer>
+      </div>
+    </div>
+  );
 }

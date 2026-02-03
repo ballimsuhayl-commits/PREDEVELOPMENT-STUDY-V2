@@ -1,45 +1,37 @@
-from __future__ import annotations
-
-from typing import Optional, Tuple
+from dataclasses import dataclass
+from typing import Optional
 
 import httpx
 
-
-class GeocodeError(RuntimeError):
-    pass
+from .config import settings
 
 
-def _format_query(address: str, country: Optional[str]) -> str:
-    addr = address.strip()
-    if country:
-        # Nominatim tends to do better if the country is included
-        addr = f"{addr}, {country.strip()}"
-    return addr
+@dataclass(frozen=True)
+class GeocodeHit:
+    display_name: str
+    lat: float
+    lon: float
+    importance: float
 
 
-def geocode_nominatim(address: str, country: Optional[str] = None) -> Tuple[float, float, str]:
-    """Geocode using OSM Nominatim.
+async def geocode_address(address: str, country: Optional[str] = None) -> Optional[GeocodeHit]:
+    if not settings.allow_nominatim:
+        return None
 
-    Returns: (lat, lon, display_name)
+    q = address if not country else f"{address}, {country}"
+    params = {"q": q, "format": "jsonv2", "limit": 1, "addressdetails": 1}
+    headers = {"User-Agent": settings.nominatim_user_agent}
 
-    Note: Nominatim usage policies apply. Use responsibly.
-    """
-
-    q = _format_query(address, country)
-    url = "https://nominatim.openstreetmap.org/search"
-    params = {"q": q, "format": "json", "limit": 1}
-    headers = {"User-Agent": "municipality-address-check/1.0"}
-
-    with httpx.Client(timeout=20.0, headers=headers) as client:
-        r = client.get(url, params=params)
+    async with httpx.AsyncClient(timeout=settings.request_timeout_s, headers=headers) as client:
+        r = await client.get(f"{settings.nominatim_base_url}/search", params=params)
         r.raise_for_status()
         data = r.json()
-
-    if not data:
-        raise GeocodeError("No results from geocoder")
-
-    item = data[0]
-    lat = float(item["lat"])
-    lon = float(item["lon"])
-    name = str(item.get("display_name") or "")
-    return lat, lon, name
+        if not data:
+            return None
+        hit = data[0]
+        return GeocodeHit(
+            display_name=str(hit.get("display_name", "")),
+            lat=float(hit["lat"]),
+            lon=float(hit["lon"]),
+            importance=float(hit.get("importance", 0.0)),
+        )

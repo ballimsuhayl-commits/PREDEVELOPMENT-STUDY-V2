@@ -1,0 +1,94 @@
+PASTED ESRI JSON SNIPPET FROM CHAT (TRUNCATED)
+
+The following content was pasted in the chat as an ArcGIS/ESRI JSON FeatureSet describing the eThekwini boundary. The chat content was extremely large and was truncated mid-coordinate in the conversation capture, so this file contains exactly the portion that was available.
+
+---BEGIN SNIPPET---
+{
+   "objectIdFieldName": "OBJECTID_1",
+   "uniqueIdField": {
+      "name": "OBJECTID_1",
+      "isSystemMaintained": true
+   },
+   "globalIdFieldName": "",
+   "geometryProperties": {
+      "shapeAreaFieldName": "Shape__Area",
+      "shapeLengthFieldName": "Shape__Length",
+      "units": "esriMeters"
+   },
+   "geometryType": "esriGeometryPolygon",
+   "spatialReference": {
+      "wkid": 4326,
+      "latestWkid": 4326
+   },
+   "fields": [
+      {
+         "name": "OBJECTID_1",
+         "type": "esriFieldTypeOID",
+         "alias": "OBJECTID_1",
+         "sqlType": "sqlTypeOther",
+         "domain": null,
+         "defaultValue": null
+      },
+      {
+         "name": "OBJECTID",
+         "type": "esriFieldTypeDouble",
+         "alias": "OBJECTID",
+         "sqlType": "sqlTypeOther",
+         "domain": null,
+         "defaultValue": null
+      },
+      {
+         "name": "PROVINCE",
+         "type": "esriFieldTypeString",
+         "alias": "PROVINCE",
+         "sqlType": "sqlTypeOther",
+         "length": 50,
+         "domain": null,
+         "defaultValue": null
+      },
+      {
+         "name": "CATEGORY",
+         "type": "esriFieldTypeString",
+         "alias": "CATEGORY",
+         "sqlType": "sqlTypeOther",
+         "length": 5,
+         "domain": null,
+         "defaultValue": null
+      }
+      ...
+   ],
+   "features": [
+      {
+         "attributes": {
+            "OBJECTID_1": 1,
+            "OBJECTID": 6115,
+            "PROVINCE": "KZN",
+            "CATEGORY": "A",
+            "CAT2": "Metropolitan Municipality",
+            "CODE": "ETH",
+            "MUNICNAME": "eThekwini",
+            "MAP_TITLE": "ETH",
+            "DISTRICT": "ETH",
+            "sde_LDR_eThekwini_Municipal_Bou": 0,
+            "MapNo": 82,
+            "MUN_CD": "(ETH)",
+            "PROVNAME": " ",
+            "Shape_Leng": 0,
+            "created_us": "shane",
+            "created_da": 1382486400000,
+            "last_edite": "shane",
+            "last_edi_1": 1383696000000,
+            "Shape_STAr": 0.23857764,
+            "Shape_STLe": 3.14570928,
+            "Shape__Area": 2555945607.800806,
+            "Shape__Length": 328272.8351677269
+         },
+         "geometry": {
+            "rings": [
+               [
+                  [31.1450799438988,-29.5063800649361],
+                  [31.1550299445046,-29.5120399398414],
+                  [31.1603443915057,-29.5150627457479]
+                  ...
+                  [31.1688500686871,-29.5975000653137]
+---END OF AVAILABLE CHAT CONTENT---

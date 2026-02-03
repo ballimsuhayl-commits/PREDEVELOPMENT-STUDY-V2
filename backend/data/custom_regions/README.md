@@ -1,3 +1,6 @@
-Put any custom region layers here.
+# Custom Regions
 
-Each feature should include `REGION` (or NAME) as the label.
+Any additional custom regions you define.
+
+Expected name field(s):
+- `REGION`, `NAME`, `name`
