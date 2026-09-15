@@ -1,7 +1,8 @@
 """Live municipal GIS integration smoke test.
 
-This deliberately tests small metadata/query calls only; it never downloads citywide layers.
-Run in CI to catch moved layer IDs, dead endpoints and schema regressions.
+Small metadata/sample queries only; no citywide downloads. The municipal GIS host is
+queried with certificate verification disabled because its current chain is not trusted by
+clean GitHub Linux runners. External ArcGIS Online sources remain certificate-verified.
 """
 from __future__ import annotations
 
@@ -10,7 +11,7 @@ import sys
 
 import httpx
 
-import property_system as ps
+import main as ps
 
 
 async def get_json(client: httpx.AsyncClient, url: str, params=None):
@@ -33,7 +34,7 @@ async def get_json(client: httpx.AsyncClient, url: str, params=None):
 async def main():
     headers = {"User-Agent": ps.USER_AGENT, "Accept": "application/json"}
     timeout = httpx.Timeout(25.0)
-    async with httpx.AsyncClient(headers=headers, timeout=timeout, follow_redirects=True) as client:
+    async with httpx.AsyncClient(headers=headers, timeout=timeout, follow_redirects=True, verify=False) as municipal_client:
         checks = {
             ps.LAYER_ROADS: ("esriGeometryPolyline", {"ROAD_TYPE"}),
             ps.LAYER_CONTOURS: ("esriGeometryPolyline", {"ELEVATION"}),
@@ -46,23 +47,22 @@ async def main():
         }
         for layer_id, (geom_type, required_fields) in checks.items():
             url = f"{ps.CADASTRAL_BASE}/{layer_id}"
-            meta = await get_json(client, url, {"f": "json"})
+            meta = await get_json(municipal_client, url, {"f": "json"})
             assert meta.get("name"), f"Layer {layer_id} missing name"
             if geom_type:
                 assert meta.get("geometryType") == geom_type, (layer_id, meta.get("name"), meta.get("geometryType"))
             fields = {f.get("name") for f in meta.get("fields", [])}
             missing = required_fields - fields
             assert not missing, f"Layer {layer_id} missing fields: {sorted(missing)}"
-
-            sample = await get_json(client, url + "/query", {
+            sample = await get_json(municipal_client, url + "/query", {
                 "f": "json", "where": "1=1", "outFields": "*",
                 "returnGeometry": "true", "resultRecordCount": 1, "outSR": 4326,
             })
             assert sample.get("features"), f"Layer {layer_id} returned no sample feature"
 
-        # External eThekwini-supporting feature/table services used by the app.
+    async with httpx.AsyncClient(headers=headers, timeout=timeout, follow_redirects=True, verify=True) as verified_client:
         for url in (ps.BUILDING_FOOTPRINTS_URL, ps.SUBURB_OVERVIEW_URL):
-            meta = await get_json(client, url, {"f": "json"})
+            meta = await get_json(verified_client, url, {"f": "json"})
             assert meta.get("fields"), f"No schema fields at {url}"
 
     print("LIVE_GIS_SMOKE_OK")
