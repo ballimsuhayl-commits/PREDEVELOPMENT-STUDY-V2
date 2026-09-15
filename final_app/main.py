@@ -11,7 +11,12 @@ import os
 from typing import List, Sequence
 
 import property_system as core
-from property_system import *  # re-export the full public runtime surface
+from property_system import *  # re-export the public runtime surface
+
+# Explicitly re-export selected internal geometry helpers used by the regression suite.
+_merge_small_boolean_gaps = core._merge_small_boolean_gaps
+_angle_deg = core._angle_deg
+_angle_difference = core._angle_difference
 
 
 def _norm_road_name(value):
@@ -97,7 +102,7 @@ def smart_contiguous_groups(classes: Sequence[core.EdgeClassification], value: b
 core.contiguous_groups = smart_contiguous_groups
 contiguous_groups = smart_contiguous_groups
 app = core.app
-APP_VERSION = core.APP_VERSION + "+frontage-sides.1"
+APP_VERSION = core.APP_VERSION + "+frontage-sides.2"
 core.APP_VERSION = APP_VERSION
 
 
