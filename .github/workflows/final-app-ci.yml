@@ -1,0 +1,42 @@
+name: Final App CI
+
+on:
+  push:
+    branches:
+      - main
+      - final-battle-tested-2026-09-15
+    paths:
+      - 'final_app/**'
+      - '.github/workflows/final-app-ci.yml'
+  pull_request:
+    paths:
+      - 'final_app/**'
+      - '.github/workflows/final-app-ci.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: final_app/requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r final_app/requirements.txt pytest
+      - name: Compile
+        working-directory: final_app
+        run: python -m py_compile property_system.py main.py live_smoke.py
+      - name: Unit and regression tests
+        working-directory: final_app
+        run: pytest -q test_property_system.py
+      - name: Import hardened application
+        working-directory: final_app
+        run: python -c "import main; assert main.app is not None; print(main.APP_VERSION)"
+      - name: Live municipal GIS smoke test
+        working-directory: final_app
+        run: python live_smoke.py
