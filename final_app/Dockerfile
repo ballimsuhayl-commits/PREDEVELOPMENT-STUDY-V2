@@ -8,6 +8,7 @@ WORKDIR /app
 COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY property_system.py ./property_system.py
+COPY main.py ./main.py
 
 EXPOSE 5000
-CMD ["sh", "-c", "uvicorn property_system:app --host 0.0.0.0 --port ${PORT:-5000}"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-5000}"]
