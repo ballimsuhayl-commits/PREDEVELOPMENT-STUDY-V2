@@ -1,12 +1,17 @@
-"""Live municipal GIS integration smoke test.
+"""Live municipal GIS + end-to-end integration smoke test.
 
 Small metadata/sample queries only; no citywide downloads. The municipal GIS host is
 queried with certificate verification disabled because its current chain is not trusted by
 clean GitHub Linux runners. External ArcGIS Online sources remain certificate-verified.
+
+After schema checks, the smoke test selects a normal-sized, reasonably compact live parcel,
+runs the full analysis pipeline, and generates its PDF. This catches integration regressions
+that isolated geometry tests cannot.
 """
 from __future__ import annotations
 
 import asyncio
+import math
 import sys
 
 import httpx
@@ -34,6 +39,8 @@ async def get_json(client: httpx.AsyncClient, url: str, params=None):
 async def main():
     headers = {"User-Agent": ps.USER_AGENT, "Accept": "application/json"}
     timeout = httpx.Timeout(25.0)
+    real_parcels = None
+
     async with httpx.AsyncClient(headers=headers, timeout=timeout, follow_redirects=True, verify=False) as municipal_client:
         checks = {
             ps.LAYER_ROADS: ("esriGeometryPolyline", {"ROAD_TYPE"}),
@@ -60,12 +67,61 @@ async def main():
             })
             assert sample.get("features"), f"Layer {layer_id} returned no sample feature"
 
+        parcel_url = f"{ps.CADASTRAL_BASE}/{ps.LAYER_PARCELS}/query"
+        real_parcels = await get_json(municipal_client, parcel_url, {
+            "f": "json", "where": "1=1", "outFields": "*", "returnGeometry": "true",
+            "resultRecordCount": 150, "outSR": 4326,
+        })
+
     async with httpx.AsyncClient(headers=headers, timeout=timeout, follow_redirects=True, verify=True) as verified_client:
         for url in (ps.BUILDING_FOOTPRINTS_URL, ps.SUBURB_OVERVIEW_URL):
             meta = await get_json(verified_client, url, {"f": "json"})
             assert meta.get("fields"), f"No schema fields at {url}"
 
-    print("LIVE_GIS_SMOKE_OK")
+    normal = []
+    fallback = []
+    for feat in (real_parcels or {}).get("features", []):
+        g = ps.esri_geometry_to_shape(feat.get("geometry"))
+        if g is None or g.is_empty:
+            continue
+        try:
+            gm = ps.to_metric(g)
+            area, perimeter = gm.area, gm.length
+            compactness = 4 * math.pi * area / max(perimeter * perimeter, 1e-9)
+            corners = len(ps.significant_corners(gm)) if gm.geom_type == "Polygon" else 99
+        except Exception:
+            continue
+        if area > 25:
+            fallback.append((area, compactness, corners, g))
+        if 250 <= area <= 5000 and compactness >= 0.22 and corners <= 16:
+            normal.append((area, compactness, corners, g))
+    pool = normal or fallback
+    assert pool, "No usable live parcel geometry returned for end-to-end smoke test"
+    # Prefer a parcel near 900 m² with high compactness and modest corner count.
+    _, _, _, selected = min(pool, key=lambda x: (abs(x[0] - 900), -x[1], x[2]))
+    point = selected.representative_point()
+
+    request = ps.AnalysisRequest(
+        lat=float(point.y), lon=float(point.x),
+        controls=ps.SetbackControls(
+            front_m=1.0, side_m=1.0, rear_m=1.0,
+            building_height_m=9.0, frontage_threshold_m=18.0,
+        ),
+    )
+    report = await ps.analyze_property(request)
+    assert report.get("success") is True
+    assert report.get("parcel", {}).get("area_m2", 0) > 25
+    assert "frontages" in report and "edge_features" in report["frontages"]
+    # A normal compact test parcel should resolve to a human-scale number of frontage sides;
+    # this guards against counting every GIS vertex/road segment as a separate frontage.
+    assert 0 <= report["frontages"]["count"] <= 4, report["frontages"]
+    assert report.get("setbacks", {}).get("basis") == "measured inward from cadastral site boundary by classified boundary segment"
+    assert report.get("beacons", {}).get("count", 0) >= 3
+    assert "contours" in report and "servitudes" in report
+    pdf = ps.generate_pdf(report)
+    assert pdf.startswith(b"%PDF") and len(pdf) > 1000
+
+    print(f"LIVE_GIS_E2E_OK parcel_area_m2={report['parcel']['area_m2']} frontages={report['frontages']['count']} beacons={report['beacons']['count']}")
 
 
 if __name__ == "__main__":
