@@ -1,15 +1,18 @@
 """Production runtime overlay for property_system.
 
-This module keeps the single-file core intact while hardening road-frontage grouping:
-adjacent cadastral edges that meet at a real parcel corner are separate street frontages
-when their direction changes materially or they reference different roads. Curved/segmented
-edges on the same side remain grouped.
+Hardens two production concerns without deleting the mature single-file core:
+1) road-facing cadastral segments are grouped into physical 1/2/3+ street-frontage sides;
+2) eThekwini's municipal GIS host currently presents a TLS chain that some clean Linux
+   runners cannot validate. Requests to that host alone can use the explicit
+   ETHEKWINI_TLS_VERIFY switch (default false); all other HTTPS sources remain verified.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import List, Sequence
 
+import httpx
 import property_system as core
 from property_system import *  # re-export the public runtime surface
 
@@ -17,6 +20,52 @@ from property_system import *  # re-export the public runtime surface
 _merge_small_boolean_gaps = core._merge_small_boolean_gaps
 _angle_deg = core._angle_deg
 _angle_difference = core._angle_difference
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+ETHEKWINI_TLS_VERIFY = _env_bool("ETHEKWINI_TLS_VERIFY", False)
+
+
+async def _municipal_aware_post(self, url, data):
+    """POST with retries and host-scoped TLS policy.
+
+    Certificate verification is disabled only for gis.durban.gov.za when the environment
+    switch is false. This is an operational compatibility measure for the municipality's
+    incomplete/unsupported certificate chain on some clients; other hosts stay verified.
+    """
+    last_error = None
+    municipal = "gis.durban.gov.za" in url.lower()
+    verify = ETHEKWINI_TLS_VERIFY if municipal else True
+    for attempt in range(core.MAX_RETRIES):
+        try:
+            async with httpx.AsyncClient(
+                headers=self.headers,
+                timeout=httpx.Timeout(core.REQUEST_TIMEOUT),
+                follow_redirects=True,
+                verify=verify,
+            ) as client:
+                resp = await client.post(url, data=data)
+                resp.raise_for_status()
+                payload = resp.json()
+                if isinstance(payload, dict) and payload.get("error"):
+                    msg = payload["error"].get("message", "ArcGIS error")
+                    details = payload["error"].get("details") or []
+                    raise RuntimeError(f"{msg}: {'; '.join(map(str, details))}")
+                return payload
+        except Exception as exc:
+            last_error = exc
+            if attempt + 1 < core.MAX_RETRIES:
+                await asyncio.sleep(0.45 * (2 ** attempt))
+    raise RuntimeError(f"GIS request failed after {core.MAX_RETRIES} attempts: {last_error}")
+
+
+core.ArcGISClient._post = _municipal_aware_post
 
 
 def _norm_road_name(value):
@@ -27,7 +76,7 @@ def _same_frontage_side(a: core.EdgeClassification, b: core.EdgeClassification, 
     if not a.frontage or not b.frontage:
         return False
     # A parcel corner is a new frontage side even when the same road name appears on
-    # both edges (e.g. curved/roundabout metadata duplicated across a corner).
+    # both edges (e.g. roundabout metadata duplicated across a cadastral corner).
     turn = core._angle_difference(core._angle_deg(a.edge), core._angle_deg(b.edge))
     if turn > max_turn_deg:
         return False
@@ -40,9 +89,9 @@ def _same_frontage_side(a: core.EdgeClassification, b: core.EdgeClassification, 
 def frontage_side_groups(classes: Sequence[core.EdgeClassification], max_turn_deg: float = 35.0) -> List[List[int]]:
     """Group road-facing boundary segments into physical street-frontage sides.
 
-    Unlike plain cyclic contiguity, this splits at a meaningful parcel-corner turn or a
-    road-name change. That is required for true 1/2/3+ frontage accounting on corner and
-    island-like sites.
+    Plain cyclic contiguity is insufficient: two road-facing edges meeting at a corner are
+    two frontages. Segmented/curved portions of one side remain grouped when their turn is
+    modest and their road identity is compatible.
     """
     n = len(classes)
     if not n:
@@ -50,7 +99,6 @@ def frontage_side_groups(classes: Sequence[core.EdgeClassification], max_turn_de
     frontage_indices = [i for i, c in enumerate(classes) if c.frontage]
     if not frontage_indices:
         return []
-
     groups: List[List[int]] = []
     current = [frontage_indices[0]]
     for prev, cur in zip(frontage_indices[:-1], frontage_indices[1:]):
@@ -60,9 +108,6 @@ def frontage_side_groups(classes: Sequence[core.EdgeClassification], max_turn_de
             groups.append(current)
             current = [cur]
     groups.append(current)
-
-    # Closed parcel ring: merge the end and start only when they are genuinely the same
-    # physical frontage side. At a 90-degree corner they remain separate.
     if (
         len(groups) > 1
         and groups[0][0] == 0
@@ -77,8 +122,6 @@ def frontage_side_groups(classes: Sequence[core.EdgeClassification], max_turn_de
 def smart_contiguous_groups(classes: Sequence[core.EdgeClassification], value: bool) -> List[List[int]]:
     if value:
         return frontage_side_groups(classes)
-    # Non-frontage runs still use ordinary closed-ring contiguity; they are subsequently
-    # classified as side/rear by their relation to the primary frontage.
     idxs = [i for i, c in enumerate(classes) if c.frontage is False]
     if not idxs:
         return []
@@ -102,7 +145,7 @@ def smart_contiguous_groups(classes: Sequence[core.EdgeClassification], value: b
 core.contiguous_groups = smart_contiguous_groups
 contiguous_groups = smart_contiguous_groups
 app = core.app
-APP_VERSION = core.APP_VERSION + "+frontage-sides.2"
+APP_VERSION = core.APP_VERSION + "+frontage-sides.3"
 core.APP_VERSION = APP_VERSION
 
 
