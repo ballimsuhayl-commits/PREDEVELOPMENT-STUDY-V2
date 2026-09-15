@@ -1,0 +1,13 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PORT=5000
+
+WORKDIR /app
+COPY requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+COPY property_system.py ./property_system.py
+
+EXPOSE 5000
+CMD ["sh", "-c", "uvicorn property_system:app --host 0.0.0.0 --port ${PORT:-5000}"]
