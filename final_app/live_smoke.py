@@ -1,8 +1,12 @@
-"""Live municipal GIS integration smoke test.
+"""Live municipal GIS + end-to-end integration smoke test.
 
 Small metadata/sample queries only; no citywide downloads. The municipal GIS host is
 queried with certificate verification disabled because its current chain is not trusted by
 clean GitHub Linux runners. External ArcGIS Online sources remain certificate-verified.
+
+After schema checks, the smoke test selects a real live parcel returned by the municipality,
+uses a representative point from that parcel, runs the full analysis pipeline, and generates
+its PDF. This catches integration regressions that isolated geometry tests cannot.
 """
 from __future__ import annotations
 
@@ -34,6 +38,8 @@ async def get_json(client: httpx.AsyncClient, url: str, params=None):
 async def main():
     headers = {"User-Agent": ps.USER_AGENT, "Accept": "application/json"}
     timeout = httpx.Timeout(25.0)
+    real_parcels = None
+
     async with httpx.AsyncClient(headers=headers, timeout=timeout, follow_redirects=True, verify=False) as municipal_client:
         checks = {
             ps.LAYER_ROADS: ("esriGeometryPolyline", {"ROAD_TYPE"}),
@@ -60,12 +66,54 @@ async def main():
             })
             assert sample.get("features"), f"Layer {layer_id} returned no sample feature"
 
+        # Select a reasonably sized real parcel for an end-to-end run. Querying 25 records
+        # is still tiny compared with the citywide layer and avoids dependence on a hard-coded
+        # test address that may change or geocode ambiguously.
+        parcel_url = f"{ps.CADASTRAL_BASE}/{ps.LAYER_PARCELS}/query"
+        real_parcels = await get_json(municipal_client, parcel_url, {
+            "f": "json", "where": "1=1", "outFields": "*", "returnGeometry": "true",
+            "resultRecordCount": 25, "outSR": 4326,
+        })
+
     async with httpx.AsyncClient(headers=headers, timeout=timeout, follow_redirects=True, verify=True) as verified_client:
         for url in (ps.BUILDING_FOOTPRINTS_URL, ps.SUBURB_OVERVIEW_URL):
             meta = await get_json(verified_client, url, {"f": "json"})
             assert meta.get("fields"), f"No schema fields at {url}"
 
-    print("LIVE_GIS_SMOKE_OK")
+    candidates = []
+    for feat in (real_parcels or {}).get("features", []):
+        g = ps.esri_geometry_to_shape(feat.get("geometry"))
+        if g is None or g.is_empty:
+            continue
+        try:
+            area = ps.to_metric(g).area
+        except Exception:
+            continue
+        if area > 25:
+            candidates.append((area, g))
+    assert candidates, "No usable live parcel geometry returned for end-to-end smoke test"
+    _, selected = max(candidates, key=lambda x: x[0])
+    point = selected.representative_point()
+
+    request = ps.AnalysisRequest(
+        lat=float(point.y), lon=float(point.x),
+        controls=ps.SetbackControls(
+            front_m=1.0, side_m=1.0, rear_m=1.0,
+            building_height_m=9.0, frontage_threshold_m=18.0,
+        ),
+    )
+    report = await ps.analyze_property(request)
+    assert report.get("success") is True
+    assert report.get("parcel", {}).get("area_m2", 0) > 25
+    assert "frontages" in report and "edge_features" in report["frontages"]
+    assert report.get("setbacks", {}).get("basis") == "measured inward from cadastral site boundary by classified boundary segment"
+    assert "beacons" in report and "items" in report["beacons"]
+    assert "contours" in report
+    assert "servitudes" in report
+    pdf = ps.generate_pdf(report)
+    assert pdf.startswith(b"%PDF") and len(pdf) > 1000
+
+    print(f"LIVE_GIS_E2E_OK parcel_area_m2={report['parcel']['area_m2']} frontages={report['frontages']['count']}")
 
 
 if __name__ == "__main__":
