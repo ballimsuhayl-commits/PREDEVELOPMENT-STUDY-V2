@@ -16,7 +16,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,10 +30,13 @@ jobs:
           pip install -r final_app/requirements.txt pytest
       - name: Compile
         working-directory: final_app
-        run: python -m py_compile property_system.py
+        run: python -m py_compile property_system.py main.py live_smoke.py
       - name: Unit and regression tests
         working-directory: final_app
         run: pytest -q test_property_system.py
-      - name: Import application
+      - name: Import hardened application
         working-directory: final_app
-        run: python -c "import property_system; assert property_system.app is not None; print(property_system.APP_VERSION)"
+        run: python -c "import main; assert main.app is not None; print(main.APP_VERSION)"
+      - name: Live municipal GIS smoke test
+        working-directory: final_app
+        run: python live_smoke.py
